@@ -13,18 +13,14 @@
         }
         .btn-upload { width: 100%; padding: 15px; font-weight: bold; background: #28a745; color: #fff; border: none; cursor: pointer; border-radius: 4px; text-transform: uppercase; margin-top: 10px; }
         
-        /* --- SETTING KERTAS F4 (215 x 330 mm) --- */
-        @page { 
-            size: 215mm 330mm; 
-            margin: 1cm; 
-        }
+        /* --- SETTING KERTAS F4 --- */
+        @page { size: 215mm 330mm; margin: 1cm; }
         .page-container {
             background: white; width: 215mm; min-height: 330mm; margin: 20px auto; padding: 1cm;
             box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.5); text-align: left;
             font-family: "Times New Roman", Times, serif; color: black;
         }
 
-        /* HEADER & KOP */
         .kop-header { display: flex; align-items: center; border-bottom: 5px double #000; padding-bottom: 10px; margin-bottom: 15px; }
         .logo { width: 75px; height: 75px; margin-right: 20px; }
         .logo img { width: 100%; height: auto; }
@@ -37,7 +33,6 @@
         .doc-title h1 { margin: 0; font-size: 16pt; font-weight: bold; text-decoration: underline; }
         .doc-title span { display: block; margin-top: 5px; font-size: 14pt; }
 
-        /* TABEL STYLE */
         .korcam-section { margin-bottom: 30px; }
         .korcam-label { font-weight: bold; font-size: 13pt; margin: 15px 0 5px 0; border-bottom: 1px solid #000; display: block; }
         
@@ -45,19 +40,16 @@
         th, td { border: 1px solid black; padding: 4px 5px; vertical-align: middle; word-wrap: break-word; }
         th { background: #eeeeee !important; text-align: center; font-weight: bold; text-transform: uppercase; font-size: 9pt; }
         
-        /* Mengulang Header di Setiap Halaman */
         thead { display: table-header-group; }
 
-        /* Pengaturan Lebar Kolom Baru */
         .col-no { width: 25px; text-align: center; }
-        .col-lembaga { width: 160px; font-weight: bold; } /* Dikurangi */
+        .col-lembaga { width: 160px; font-weight: bold; }
         .col-jml { width: 45px; text-align: center; font-weight: bold; }
         .col-waktu { width: 50px; }
-        .col-penerima { width: 180px; } /* Ditambah lebar */
-        .col-ttd { width: 85px; font-size: 8pt; vertical-align: top !important; height: 50px; } /* Rata Atas */
+        .col-penerima { width: 180px; }
+        .col-ttd { width: 85px; font-size: 8pt; vertical-align: top !important; height: 50px; }
         .col-petugas { width: 60px; }
 
-        /* Style Kolom Penerima */
         .penerima-cell { vertical-align: top; padding: 2px 5px !important; }
         .samar { color: rgba(0,0,0,0.25); font-size: 9pt; display: block; border-bottom: 1px solid rgba(0,0,0,0.05); height: 23px; line-height: 23px; }
         .samar:last-child { border-bottom: none; }
@@ -106,18 +98,23 @@
     }
 
     function processData(csv) {
-        const rows = csv.split('\n');
-        const headerRow = rows[0].split(';').map(h => h.replace(/"/g, '').trim().toUpperCase());
+        const lines = csv.split('\n');
+        const headerRow = lines[0].split(';').map(h => h.replace(/"/g, '').trim().toUpperCase());
         
         const idxID = headerRow.indexOf("ID PESERTA");
         const idxLembaga = headerRow.indexOf("ASAL LEMBAGA");
         const idxStatus = headerRow.indexOf("L / TL");
+        
+        // Kolom nilai untuk validasi riwayat ujian
+        const nilaiCols = ["N. FSH", "N. GRB", "N. TRL", "N. TJW", "N. DDH", "N. SSP", "N. SLT", "N. WDL"];
+        const idxNilai = nilaiCols.map(name => headerRow.indexOf(name));
 
         let dataStore = {}; 
 
-        for (let i = 1; i < rows.length; i++) {
-            if (!rows[i].trim()) continue;
-            const cols = rows[i].split(';').map(v => v.replace(/"/g, '').trim());
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            const cols = lines[i].split(';').map(v => v.replace(/"/g, '').trim());
+            
             const idPeserta = cols[idxID] || "";
             const matchWilayah = idPeserta.match(/-(\d+)\./);
             const kodeWil = matchWilayah ? matchWilayah[1] : "00";
@@ -126,13 +123,22 @@
             
             const namaLembaga = smartCase(cols[idxLembaga] || "UMUM");
             if (!dataStore[kodeWil][namaLembaga]) {
-                dataStore[kodeWil][namaLembaga] = { l: 0, total: 0, hasData: false };
+                dataStore[kodeWil][namaLembaga] = { lulus: 0, total: 0, adaRiwayatUjian: false };
             }
 
-            dataStore[kodeWil][namaLembaga].total++;
-            const st = cols[idxStatus];
-            if (st === "L") { dataStore[kodeWil][namaLembaga].l++; dataStore[kodeWil][namaLembaga].hasData = true; }
-            else if (st === "TL") { dataStore[kodeWil][namaLembaga].hasData = true; }
+            const instansi = dataStore[kodeWil][namaLembaga];
+            instansi.total++;
+
+            // Validasi: Cek apakah ada satu saja kolom nilai yang terisi
+            const adaNilai = idxNilai.some(idx => idx !== -1 && cols[idx] !== "" && cols[idx] !== "0");
+            
+            if (cols[idxStatus] === "L") {
+                instansi.lulus++;
+                instansi.adaRiwayatUjian = true; 
+            } else if (adaNilai) {
+                // Jika status TL tapi ada nilai terisi, berarti sudah ujian
+                instansi.adaRiwayatUjian = true;
+            }
         }
         renderOutput(dataStore);
     }
@@ -176,7 +182,9 @@
             Object.keys(dataStore[kode]).sort().forEach((nama, index) => {
                 const d = dataStore[kode][nama];
                 const no = index + 1;
-                const displayJml = d.hasData ? `${d.l} / ${d.total}` : ` / ${d.total}`;
+                
+                // Logika Perbaikan Kolom JML
+                const displayJml = d.adaRiwayatUjian ? `${d.lulus} / ${d.total}` : ` / ${d.total}`;
 
                 tableHtml += `
                     <tr>
